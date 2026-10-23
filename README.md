@@ -10,6 +10,7 @@ A simple web app for recording school assets and where they are kept. Staff log 
 
 - Login required before any data is shown
 - Add, edit and delete assets
+- Optional photo for each asset, with a thumbnail in the list and a full-size view on click
 - Search by name, code or location
 - Live updates: changes appear on every open device without refreshing
 - Duplicate asset codes are blocked
@@ -68,11 +69,14 @@ service cloud.firestore {
     match /assets/{id} {
       allow read, write: if request.auth != null;
     }
+    match /assetImages/{id} {
+      allow read, write: if request.auth != null;
+    }
   }
 }
 ```
 
-This allows only logged-in users to read or change assets. Do not leave the database in "test mode", which lets anyone read and write.
+This allows only logged-in users to read or change assets and their photos. Do not leave the database in "test mode", which lets anyone read and write.
 
 ### 5. Deploy to GitHub Pages
 
@@ -93,9 +97,10 @@ Firebase blocks logins from unknown domains.
 | Task | How |
 | --- | --- |
 | Log in | Enter the email and password created for you in Firebase |
-| Add an asset | Select **Add asset**, then enter the code, name and location |
-| Edit an asset | Select **Edit** on its row. You can change the name and location |
+| Add an asset | Select **Add asset**, then enter the code, name and location. Optionally choose a photo |
+| Edit an asset | Select **Edit** on its row. You can change the name, location and photo |
 | Delete an asset | Select **Delete** on its row and confirm |
+| View a photo | Select the thumbnail in the list to open the full-size photo |
 | Find an asset | Type in the search box. It matches the code, name and location |
 | Log out | Select **Log out** at the top right |
 
@@ -110,9 +115,17 @@ Each asset is stored in the `assets` collection, and the document ID is the asse
 | `code` | Unique asset code, for example `LAP-0042` |
 | `name` | Asset name, for example `Dell Latitude laptop` |
 | `location` | Where the asset is kept, for example `Computer Lab 2` |
+| `thumb` | Tiny preview photo (about 96 px), only if the asset has a photo |
 | `createdAt`, `createdBy` | When the asset was added, and by whom |
 | `updatedAt`, `updatedBy` | Set when the asset is edited |
 
+The full-size photo is stored separately in the `assetImages` collection, using the same asset code as the document ID. It holds a single `data` field with the photo as a compressed JPEG. Keeping it separate means the asset list stays fast, and the full photo is loaded only when someone opens it.
+
+## How photos are stored
+
+This app does not use Firebase Cloud Storage, because since February 2026 it needs the paid Blaze plan and a billing account. Instead, photos are resized in the browser (up to 800 px on the longest side, saved as JPEG at about 50 to 150 KB) and stored in Firestore. This keeps the project on the free Spark plan with no card.
+
+As a guide, 1,000 assets with photos use roughly 100 MB, well within Firestore's free 1 GB of storage. One document cannot exceed 1 MiB, which the automatic compression keeps well clear of.
 ## Managing users
 
 - **Add a user:** Authentication → Users → Add user
@@ -136,6 +149,7 @@ Then open `http://localhost:8000`. `localhost` is already an authorised domain i
 | "Email or password is incorrect" | Check the user exists under Authentication → Users |
 | Login fails with an unauthorized-domain error | Add your `github.io` domain to Authorized domains (step 6) |
 | "Missing or insufficient permissions" | The Firestore rules were not published, or the user is not logged in (step 4) |
+| "That file could not be read as an image" | Use a JPEG or PNG. Some HEIC photos can't be read by every browser |
 | Page shows the login box but nothing happens | The `firebaseConfig` values are still placeholders (step 2) |
 | Changes to the site don't appear | GitHub Pages can take a few minutes to update. Hard refresh with Ctrl+Shift+R |
 
@@ -143,4 +157,4 @@ Then open `http://localhost:8000`. `localhost` is already an authorised domain i
 
 - Every logged-in user can add, edit and delete. There are no read-only roles.
 - Firebase's free tier is generally enough for a school's asset list, but check [Firebase pricing](https://firebase.google.com/pricing) for current limits.
-- Deleted assets are removed permanently. Consider exporting your data regularly from the Firebase console.
+- Deleting an asset also deletes its photo, permanently. Consider exporting your data regularly from the Firebase console.

@@ -57,7 +57,7 @@
   .count{color:var(--muted);font-size:.95rem;margin:0 0 .5rem}
 
   .table-wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:8px}
-  table{width:100%;border-collapse:collapse;min-width:560px}
+  table{width:100%;border-collapse:collapse;min-width:640px}
   th,td{text-align:left;padding:.7rem .9rem;border-bottom:1px solid var(--line)}
   th{font-size:.9rem;color:var(--muted)}
   tr:last-child td{border-bottom:0}
@@ -65,6 +65,17 @@
   td.actions{text-align:right;white-space:nowrap}
   td.actions .btn+.btn{margin-left:.4rem}
   .empty{padding:2rem;text-align:center;color:var(--muted)}
+
+  /* Photos */
+  .thumbbtn{background:none;border:0;padding:0;cursor:pointer;display:block}
+  .thumb,.nophoto{width:44px;height:44px;border-radius:6px;border:1px solid var(--line)}
+  .thumb{object-fit:cover;background:var(--paper);display:block}
+  .nophoto{border-style:dashed;display:grid;place-items:center;color:var(--muted);font-size:.7rem}
+  .photo-box{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap}
+  #preview{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+  .hint{color:var(--muted);font-size:.85rem}
+  #viewDlg{width:min(640px,94vw)}
+  #viewImg{max-width:100%;max-height:65vh;display:block;margin:0 auto;border-radius:6px}
 
   /* Dialog */
   dialog{border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);padding:1.5rem;width:min(440px,92vw)}
@@ -103,7 +114,7 @@
     <p class="count" id="count" aria-live="polite"></p>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Code</th><th>Asset name</th><th>Location</th><th></th></tr></thead>
+        <thead><tr><th>Photo</th><th>Code</th><th>Asset name</th><th>Location</th><th></th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="empty" id="empty" hidden>No assets yet. Select “Add asset” to record the first one.</div>
@@ -119,6 +130,17 @@
     <div class="field"><label for="fCode">Asset code</label><input id="fCode" required maxlength="40" placeholder="e.g. LAP-0042"></div>
     <div class="field"><label for="fName">Asset name</label><input id="fName" required maxlength="120" placeholder="e.g. Dell Latitude laptop"></div>
     <div class="field"><label for="fLocation">Location</label><input id="fLocation" required maxlength="120" placeholder="e.g. Computer Lab 2"></div>
+    <div class="field">
+      <label for="fPhoto">Photo (optional)</label>
+      <div class="photo-box">
+        <img id="preview" alt="Photo preview" hidden>
+        <div>
+          <input id="fPhoto" type="file" accept="image/*">
+          <button type="button" class="btn danger small" id="removePhoto" hidden>Remove photo</button>
+        </div>
+      </div>
+      <span class="hint">Photos are resized automatically to keep the database small.</span>
+    </div>
     <p class="msg" id="formMsg" role="alert"></p>
     <div class="dlg-actions">
       <button class="btn ghost" type="button" id="cancelBtn">Cancel</button>
@@ -127,11 +149,19 @@
   </form>
 </dialog>
 
+<!-- Photo viewer -->
+<dialog id="viewDlg">
+  <h2 id="viewTitle"></h2>
+  <img id="viewImg" alt="Asset photo">
+  <p class="msg" id="viewMsg" role="alert"></p>
+  <div class="dlg-actions"><button class="btn ghost" type="button" id="closeView">Close</button></div>
+</dialog>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut }
   from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp }
+import { getFirestore, collection, doc, getDoc, writeBatch, deleteField, onSnapshot, query, orderBy, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 /* ===== 1. PASTE YOUR FIREBASE CONFIG HERE (Firebase console → Project settings → Your apps) ===== */
@@ -200,6 +230,9 @@ function render() {
   const list = assets.filter(a => !q || [a.code, a.name, a.location].some(v => (v || "").toLowerCase().includes(q)));
   $("rows").innerHTML = list.map(a => `
     <tr>
+      <td>${a.thumb
+        ? `<button class="thumbbtn" data-view="${esc(a.code)}" aria-label="View photo of ${esc(a.name)}"><img class="thumb" src="${esc(a.thumb)}" alt=""></button>`
+        : `<div class="nophoto">None</div>`}</td>
       <td class="code"><span>${esc(a.code)}</span></td>
       <td>${esc(a.name)}</td>
       <td>${esc(a.location)}</td>
@@ -215,12 +248,29 @@ function render() {
 $("search").addEventListener("input", render);
 
 $("rows").addEventListener("click", async e => {
-  const edit = e.target.closest("[data-edit]"), del = e.target.closest("[data-del]");
+  const edit = e.target.closest("[data-edit]"), del = e.target.closest("[data-del]"), view = e.target.closest("[data-view]");
+  if (view) {
+    const a = assets.find(x => x.code === view.dataset.view);
+    $("viewTitle").textContent = `${a.name} (${a.code})`;
+    $("viewImg").src = a.thumb;               // show the small version instantly
+    $("viewMsg").textContent = "Loading full photo…";
+    $("viewDlg").showModal();
+    try {
+      const snap = await getDoc(doc(db, "assetImages", a.code));
+      if (snap.exists()) $("viewImg").src = snap.data().data;
+      $("viewMsg").textContent = "";
+    } catch (err) { $("viewMsg").textContent = "Could not load the full photo: " + err.message; }
+  }
   if (edit) openDialog(assets.find(a => a.code === edit.dataset.edit));
   if (del) {
     const a = assets.find(x => x.code === del.dataset.del);
     if (confirm(`Delete ${a.name} (${a.code})? This cannot be undone.`)) {
-      try { await deleteDoc(doc(db, "assets", a.code)); }
+      try {
+        const b = writeBatch(db);
+        b.delete(doc(db, "assets", a.code));
+        b.delete(doc(db, "assetImages", a.code));
+        await b.commit();
+      }
       catch (err) { $("appMsg").textContent = "Could not delete: " + err.message; }
     }
   }
@@ -228,6 +278,49 @@ $("rows").addEventListener("click", async e => {
 
 /* ---------- Add / edit ---------- */
 const dlg = $("dlg");
+$("closeView").addEventListener("click", () => $("viewDlg").close());
+
+/* ---------- Photos: resize in the browser, store as small JPEG text ---------- */
+let newPhoto = null;      // { full, thumb } when a new photo was chosen
+let removePhoto = false;  // true when the existing photo should be deleted
+let hadPhoto = false;
+
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("That file could not be read as an image. Try a JPEG or PNG.")); };
+    img.src = url;
+  });
+}
+function resize(img, max, quality) {
+  const k = Math.min(1, max / Math.max(img.width, img.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", quality);
+}
+async function processPhoto(file) {
+  const img = await loadImage(file);
+  let full = resize(img, 800, 0.75);
+  for (let q = 0.65; full.length > 600000 && q > 0.3; q -= 0.1) full = resize(img, 800, q); // stay well under Firestore's 1 MiB limit
+  return { full, thumb: resize(img, 96, 0.6) };
+}
+function showPreview(src) { $("preview").src = src; $("preview").hidden = false; $("removePhoto").hidden = false; }
+function clearPreview() { $("preview").removeAttribute("src"); $("preview").hidden = true; $("removePhoto").hidden = true; }
+
+$("fPhoto").addEventListener("change", async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  $("formMsg").textContent = "";
+  try { newPhoto = await processPhoto(file); removePhoto = false; showPreview(newPhoto.full); }
+  catch (err) { newPhoto = null; e.target.value = ""; $("formMsg").textContent = err.message; }
+});
+$("removePhoto").addEventListener("click", () => {
+  newPhoto = null; removePhoto = hadPhoto; $("fPhoto").value = ""; clearPreview();
+});
 function openDialog(asset) {
   editingCode = asset ? asset.code : null;
   $("dlgTitle").textContent = asset ? "Edit asset" : "Add asset";
@@ -236,6 +329,9 @@ function openDialog(asset) {
   $("fName").value = asset ? asset.name : "";
   $("fLocation").value = asset ? asset.location : "";
   $("formMsg").textContent = "";
+  newPhoto = null; removePhoto = false; hadPhoto = !!(asset && asset.thumb);
+  $("fPhoto").value = "";
+  if (hadPhoto) showPreview(asset.thumb); else clearPreview();
   dlg.showModal();
   (asset ? $("fName") : $("fCode")).focus();
 }
@@ -252,13 +348,20 @@ $("assetForm").addEventListener("submit", async e => {
   if (code.includes("/")) { msg.textContent = "The code cannot contain a slash (/)."; return; }
   btn.disabled = true; msg.textContent = "";
   try {
-    const ref = doc(db, "assets", code);
+    const ref = doc(db, "assets", code), imgRef = doc(db, "assetImages", code);
+    const batch = writeBatch(db);
     if (editingCode) {
-      await updateDoc(ref, { name, location, updatedAt: serverTimestamp(), updatedBy: auth.currentUser.email });
+      const changes = { name, location, updatedAt: serverTimestamp(), updatedBy: auth.currentUser.email };
+      if (newPhoto) { changes.thumb = newPhoto.thumb; batch.set(imgRef, { data: newPhoto.full }); }
+      else if (removePhoto) { changes.thumb = deleteField(); batch.delete(imgRef); }
+      batch.update(ref, changes);
     } else {
       if ((await getDoc(ref)).exists()) { msg.textContent = `Code ${code} is already in use. Choose a different code.`; return; }
-      await setDoc(ref, { code, name, location, createdAt: serverTimestamp(), createdBy: auth.currentUser.email });
+      const data = { code, name, location, createdAt: serverTimestamp(), createdBy: auth.currentUser.email };
+      if (newPhoto) { data.thumb = newPhoto.thumb; batch.set(imgRef, { data: newPhoto.full }); }
+      batch.set(ref, data);
     }
+    await batch.commit();
     dlg.close();
   } catch (err) {
     msg.textContent = "Could not save: " + err.message;
