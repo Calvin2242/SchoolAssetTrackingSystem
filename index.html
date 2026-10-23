@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>School Asset Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f3f1ec; --card:#ffffff; --ink:#1d2433; --muted:#667085;
+    --line:#d9d5cb; --brand:#1f4e79; --brand-ink:#ffffff; --tag:#ffd23f;
+    --danger:#b42318; --ok:#16794c;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#151a24; --card:#1e2533; --ink:#eef0f4; --muted:#9aa3b5;
+      --line:#2f384a; --brand:#7fb2e5; --brand-ink:#0f1a28; --tag:#ffd23f;
+      --danger:#ff8a80; --ok:#6fd6a3;
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:"Atkinson Hyperlegible",system-ui,sans-serif;background:var(--paper);color:var(--ink);line-height:1.5;min-height:100vh}
+  [hidden]{display:none!important}
+  button,input{font:inherit;color:inherit}
+  :focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+
+  /* Buttons & fields */
+  .btn{background:var(--brand);color:var(--brand-ink);border:0;border-radius:6px;padding:.6rem 1rem;font-weight:700;cursor:pointer}
+  .btn:hover{filter:brightness(1.1)}
+  .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+  .btn.danger{background:transparent;color:var(--danger);border:1px solid var(--line)}
+  .btn.small{padding:.3rem .65rem;font-size:.9rem}
+  .field{display:grid;gap:.3rem;margin-bottom:1rem}
+  .field label{font-weight:700;font-size:.95rem}
+  .field input{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:.65rem .75rem;width:100%}
+  .msg{min-height:1.4rem;font-size:.95rem;color:var(--danger)}
+  .msg.ok{color:var(--ok)}
+
+  /* Login */
+  #login{display:grid;place-items:center;min-height:100vh;padding:1.5rem}
+  .login-card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:2rem;width:100%;max-width:400px;border-top:8px solid var(--tag)}
+  .login-card h1{margin:0 0 .25rem;font-size:1.6rem}
+  .login-card p{margin:0 0 1.5rem;color:var(--muted)}
+  .login-card .btn{width:100%}
+
+  /* App */
+  header{background:var(--brand);color:var(--brand-ink);display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.8rem 1.25rem;border-bottom:6px solid var(--tag)}
+  header h1{margin:0;font-size:1.25rem}
+  header .who{display:flex;align-items:center;gap:.75rem;font-size:.9rem}
+  header .btn.ghost{color:var(--brand-ink);border-color:currentColor}
+  main{max-width:960px;margin:0 auto;padding:1.5rem 1.25rem 3rem}
+  .toolbar{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;margin-bottom:1rem}
+  .toolbar input{flex:1 1 220px;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:.6rem .75rem}
+  .count{color:var(--muted);font-size:.95rem;margin:0 0 .5rem}
+
+  .table-wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:8px}
+  table{width:100%;border-collapse:collapse;min-width:560px}
+  th,td{text-align:left;padding:.7rem .9rem;border-bottom:1px solid var(--line)}
+  th{font-size:.9rem;color:var(--muted)}
+  tr:last-child td{border-bottom:0}
+  td.code span{background:var(--tag);color:#1d2433;font-weight:700;padding:.1rem .5rem;border-radius:4px;white-space:nowrap}
+  td.actions{text-align:right;white-space:nowrap}
+  td.actions .btn+.btn{margin-left:.4rem}
+  .empty{padding:2rem;text-align:center;color:var(--muted)}
+
+  /* Dialog */
+  dialog{border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);padding:1.5rem;width:min(440px,92vw)}
+  dialog::backdrop{background:rgba(10,15,25,.55)}
+  dialog h2{margin:0 0 1rem;font-size:1.25rem}
+  .dlg-actions{display:flex;justify-content:flex-end;gap:.6rem;margin-top:.5rem}
+</style>
+</head>
+<body>
+
+<!-- Login screen -->
+<section id="login" hidden>
+  <div class="login-card">
+    <h1>School Asset Tracker</h1>
+    <p>Log in with your school account to view and manage assets.</p>
+    <form id="loginForm" novalidate>
+      <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="username" required></div>
+      <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required></div>
+      <p class="msg" id="loginMsg" role="alert"></p>
+      <button class="btn" type="submit" id="loginBtn">Log in</button>
+    </form>
+  </div>
+</section>
+
+<!-- App -->
+<div id="app" hidden>
+  <header>
+    <h1>School Asset Tracker</h1>
+    <div class="who"><span id="userEmail"></span><button class="btn ghost small" id="logoutBtn">Log out</button></div>
+  </header>
+  <main>
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Search by name, code or location" aria-label="Search assets">
+      <button class="btn" id="addBtn">Add asset</button>
+    </div>
+    <p class="count" id="count" aria-live="polite"></p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Code</th><th>Asset name</th><th>Location</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="empty" id="empty" hidden>No assets yet. Select “Add asset” to record the first one.</div>
+    </div>
+    <p class="msg" id="appMsg" role="alert"></p>
+  </main>
+</div>
+
+<!-- Add / edit dialog -->
+<dialog id="dlg">
+  <form id="assetForm" method="dialog" novalidate>
+    <h2 id="dlgTitle">Add asset</h2>
+    <div class="field"><label for="fCode">Asset code</label><input id="fCode" required maxlength="40" placeholder="e.g. LAP-0042"></div>
+    <div class="field"><label for="fName">Asset name</label><input id="fName" required maxlength="120" placeholder="e.g. Dell Latitude laptop"></div>
+    <div class="field"><label for="fLocation">Location</label><input id="fLocation" required maxlength="120" placeholder="e.g. Computer Lab 2"></div>
+    <p class="msg" id="formMsg" role="alert"></p>
+    <div class="dlg-actions">
+      <button class="btn ghost" type="button" id="cancelBtn">Cancel</button>
+      <button class="btn" type="submit" id="saveBtn">Save asset</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut }
+  from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+/* ===== 1. PASTE YOUR FIREBASE CONFIG HERE (Firebase console → Project settings → Your apps) ===== */
+const firebaseConfig = {
+  apiKey: "AIzaSyAJ916psFN1yTwGPlZE0T7s909yxBcOohs",
+  authDomain: "schoolassettracking.firebaseapp.com",
+  projectId: "schoolassettracking",
+  storageBucket: "schoolassettracking.firebasestorage.app",
+  messagingSenderId: "1028869651452",
+  appId: "1:1028869651452:web:d50611479b8165e3a75079",
+  measurementId: "G-S3YWRHNG8R"
+};
+/* ================================================================================================ */
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const assetsRef = collection(db, "assets");
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+let assets = [];
+let unsubscribe = null;
+let editingCode = null;
+
+/* ---------- Auth ---------- */
+onAuthStateChanged(auth, user => {
+  if (user) {
+    $("login").hidden = true;
+    $("app").hidden = false;
+    $("userEmail").textContent = user.email;
+    unsubscribe = onSnapshot(query(assetsRef, orderBy("code")),
+      snap => { assets = snap.docs.map(d => d.data()); $("appMsg").textContent = ""; render(); },
+      err => { $("appMsg").textContent = "Could not load assets: " + err.message; });
+  } else {
+    if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+    assets = [];
+    $("app").hidden = true;
+    $("login").hidden = false;
+  }
+});
+
+$("loginForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const msg = $("loginMsg"), btn = $("loginBtn");
+  msg.textContent = "";
+  if (!$("email").value || !$("password").value) { msg.textContent = "Enter your email and password."; return; }
+  btn.disabled = true; btn.textContent = "Logging in…";
+  try {
+    await signInWithEmailAndPassword(auth, $("email").value.trim(), $("password").value);
+    $("password").value = "";
+  } catch (err) {
+    const bad = ["auth/invalid-credential","auth/wrong-password","auth/user-not-found","auth/invalid-email"];
+    msg.textContent = bad.includes(err.code) ? "Email or password is incorrect." :
+      err.code === "auth/too-many-requests" ? "Too many attempts. Wait a few minutes and try again." :
+      "Could not log in: " + err.message;
+  } finally { btn.disabled = false; btn.textContent = "Log in"; }
+});
+
+$("logoutBtn").addEventListener("click", () => signOut(auth));
+
+/* ---------- List ---------- */
+function render() {
+  const q = $("search").value.trim().toLowerCase();
+  const list = assets.filter(a => !q || [a.code, a.name, a.location].some(v => (v || "").toLowerCase().includes(q)));
+  $("rows").innerHTML = list.map(a => `
+    <tr>
+      <td class="code"><span>${esc(a.code)}</span></td>
+      <td>${esc(a.name)}</td>
+      <td>${esc(a.location)}</td>
+      <td class="actions">
+        <button class="btn ghost small" data-edit="${esc(a.code)}">Edit</button>
+        <button class="btn danger small" data-del="${esc(a.code)}">Delete</button>
+      </td>
+    </tr>`).join("");
+  $("empty").hidden = assets.length > 0;
+  $("count").textContent = assets.length
+    ? `${list.length} of ${assets.length} asset${assets.length === 1 ? "" : "s"}` : "";
+}
+$("search").addEventListener("input", render);
+
+$("rows").addEventListener("click", async e => {
+  const edit = e.target.closest("[data-edit]"), del = e.target.closest("[data-del]");
+  if (edit) openDialog(assets.find(a => a.code === edit.dataset.edit));
+  if (del) {
+    const a = assets.find(x => x.code === del.dataset.del);
+    if (confirm(`Delete ${a.name} (${a.code})? This cannot be undone.`)) {
+      try { await deleteDoc(doc(db, "assets", a.code)); }
+      catch (err) { $("appMsg").textContent = "Could not delete: " + err.message; }
+    }
+  }
+});
+
+/* ---------- Add / edit ---------- */
+const dlg = $("dlg");
+function openDialog(asset) {
+  editingCode = asset ? asset.code : null;
+  $("dlgTitle").textContent = asset ? "Edit asset" : "Add asset";
+  $("fCode").value = asset ? asset.code : "";
+  $("fCode").disabled = !!asset;           // code is the record's ID, so it stays fixed
+  $("fName").value = asset ? asset.name : "";
+  $("fLocation").value = asset ? asset.location : "";
+  $("formMsg").textContent = "";
+  dlg.showModal();
+  (asset ? $("fName") : $("fCode")).focus();
+}
+$("addBtn").addEventListener("click", () => openDialog(null));
+$("cancelBtn").addEventListener("click", () => dlg.close());
+
+$("assetForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const code = $("fCode").value.trim().toUpperCase().replace(/\s+/g, "-");
+  const name = $("fName").value.trim();
+  const location = $("fLocation").value.trim();
+  const msg = $("formMsg"), btn = $("saveBtn");
+  if (!code || !name || !location) { msg.textContent = "Fill in the code, name and location."; return; }
+  if (code.includes("/")) { msg.textContent = "The code cannot contain a slash (/)."; return; }
+  btn.disabled = true; msg.textContent = "";
+  try {
+    const ref = doc(db, "assets", code);
+    if (editingCode) {
+      await updateDoc(ref, { name, location, updatedAt: serverTimestamp(), updatedBy: auth.currentUser.email });
+    } else {
+      if ((await getDoc(ref)).exists()) { msg.textContent = `Code ${code} is already in use. Choose a different code.`; return; }
+      await setDoc(ref, { code, name, location, createdAt: serverTimestamp(), createdBy: auth.currentUser.email });
+    }
+    dlg.close();
+  } catch (err) {
+    msg.textContent = "Could not save: " + err.message;
+  } finally { btn.disabled = false; }
+});
+</script>
+</body>
+</html>
